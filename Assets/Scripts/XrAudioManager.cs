@@ -23,6 +23,10 @@ public class XrAudioManager : MonoBehaviour
     [SerializeField] private AudioSource backgroundMusic;
     [SerializeField] private AudioClip backgroundMusicClip;
 
+    [Header("Start Game Audio")]
+    [SerializeField] private AudioSource startGameAudioSource;
+    [SerializeField] private AudioClip startGameClip;
+
     [Header("UI Panels")]
     [SerializeField] private GameObject startPanel;
     [SerializeField] private GameObject challengePanel;
@@ -81,6 +85,14 @@ public class XrAudioManager : MonoBehaviour
 
         if (startPanel != null) startPanel.SetActive(false);
         if (challengePanel != null) challengePanel.SetActive(true);
+
+        // Play the start game audio
+        if (startGameAudioSource != null && startGameClip != null)
+        {
+            startGameAudioSource.clip = startGameClip;
+            startGameAudioSource.loop = false; // Ensure it doesn't loop
+            startGameAudioSource.Play();
+        }
 
         // Activate the first challenge
         ActivateCurrentChallenge();
