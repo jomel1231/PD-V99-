@@ -21,6 +21,8 @@ TagManager:
   - PhoneScreen
   - Table
   - Chassis
+  - Scalpel
+  - SuctionTool
   layers:
   - Default
   - TransparentFX

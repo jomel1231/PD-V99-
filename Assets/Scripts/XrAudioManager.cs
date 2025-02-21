@@ -1,6 +1,8 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
+using TMPro;
 
 public class XrAudioManager : MonoBehaviour
 {
@@ -9,21 +11,22 @@ public class XrAudioManager : MonoBehaviour
     [SerializeField] private AudioSource progressSound;
     [SerializeField] private AudioClip challengeCompleteClip;
 
-    [Header("Suction Tool Challenge")]
-    [SerializeField] private XRGrabInteractable suctionTool;
-    [SerializeField] private GameObject phoneScreen;
-    [SerializeField] private AudioSource suctionToolAudio;
-    [SerializeField] private AudioClip suctionStartClip;
-    [SerializeField] private AudioClip suctionDetachClip;
+    [Header("Challenge Objects")]
+    [SerializeField] private List<XRGrabInteractable> challengeObjects = new List<XRGrabInteractable>();
+    [SerializeField] private List<GameObject> challengeSpotlights = new List<GameObject>();
 
-    private bool isAttached = false;
-    private bool challengeCompleted = false;
     private bool gameStarted = false;
+    private int currentChallengeIndex = 0; // Start at 0
+    private bool challengeCompleted = false;
 
     [Header("Background Music")]
     [SerializeField] private AudioSource backgroundMusic;
     [SerializeField] private AudioClip backgroundMusicClip;
-    private bool startAudioBool;
+
+    [Header("UI Panels")]
+    [SerializeField] private GameObject startPanel;
+    [SerializeField] private GameObject challengePanel;
+    [SerializeField] private TextMeshProUGUI challengeText;
 
     private void OnEnable()
     {
@@ -31,9 +34,10 @@ public class XrAudioManager : MonoBehaviour
         {
             progressControl.OnStartGame.AddListener(StartGame);
         }
-        if (suctionTool != null)
+
+        foreach (var obj in challengeObjects)
         {
-            suctionTool.selectEntered.AddListener(OnSuctionToolUsed);
+            obj.selectEntered.AddListener(OnChallengeObjectUsed);
         }
     }
 
@@ -43,60 +47,125 @@ public class XrAudioManager : MonoBehaviour
         {
             progressControl.OnStartGame.RemoveListener(StartGame);
         }
-        if (suctionTool != null)
+
+        foreach (var obj in challengeObjects)
         {
-            suctionTool.selectEntered.RemoveListener(OnSuctionToolUsed);
+            obj.selectEntered.RemoveListener(OnChallengeObjectUsed);
+        }
+    }
+
+    private void Start()
+    {
+        if (backgroundMusic != null && backgroundMusicClip != null)
+        {
+            backgroundMusic.clip = backgroundMusicClip;
+            backgroundMusic.loop = true;
+            backgroundMusic.Play();
+        }
+
+        if (startPanel != null) startPanel.SetActive(true);
+        if (challengePanel != null) challengePanel.SetActive(false);
+
+        // Ensure all spotlights are OFF at the beginning
+        foreach (var light in challengeSpotlights)
+        {
+            if (light != null) light.SetActive(false);
         }
     }
 
     private void StartGame(string arg0)
     {
+        if (gameStarted) return;
+
         gameStarted = true;
-        if (!startAudioBool)
-        {
-            startAudioBool = true;
-            if (backgroundMusic != null && backgroundMusicClip != null)
-            {
-                backgroundMusic.clip = backgroundMusicClip;
-                backgroundMusic.loop = true;
-                backgroundMusic.Play();
-            }
-        }
+
+        if (startPanel != null) startPanel.SetActive(false);
+        if (challengePanel != null) challengePanel.SetActive(true);
+
+        // Activate the first challenge
+        ActivateCurrentChallenge();
     }
 
-    private void OnSuctionToolUsed(SelectEnterEventArgs args)
+    private void OnChallengeObjectUsed(SelectEnterEventArgs args)
     {
-        if (!gameStarted || isAttached || challengeCompleted)
+        if (!gameStarted || challengeCompleted) return;
+
+        // Check if the grabbed tool matches the current challenge tool using tags
+        if (args.interactableObject.transform.CompareTag(GetTagForChallenge(currentChallengeIndex)))
         {
-            return;
+            Debug.Log($"{args.interactableObject.transform.name} picked up! Challenge complete.");
+            ChallengeComplete();
         }
-        StartCoroutine(PlaySuctionAudio());
-    }
-
-    private IEnumerator PlaySuctionAudio()
-    {
-        // Play suction start sound
-        suctionToolAudio.clip = suctionStartClip;
-        suctionToolAudio.Play();
-
-        yield return new WaitForSeconds(suctionStartClip.length);
-
-        // Play detach sound
-        suctionToolAudio.clip = suctionDetachClip;
-        suctionToolAudio.Play();
-
-        ChallengeComplete();
     }
 
     private void ChallengeComplete()
     {
+        if (challengeCompleted) return;
+
         challengeCompleted = true;
+
         if (progressSound != null && challengeCompleteClip != null)
         {
-            progressSound.clip = challengeCompleteClip;
-            progressSound.Play();
+            progressSound.PlayOneShot(challengeCompleteClip);
         }
-        progressControl.OnChallengeComplete.Invoke("Suction Tool Challenge Complete");
-        Debug.Log("Challenge Completed: Move to the next step!");
+
+        if (progressControl != null)
+        {
+            progressControl.OnChallengeComplete.Invoke("Challenge Complete!");
+        }
+
+        Debug.Log("Challenge Completed! Waiting before next challenge...");
+        StartCoroutine(ProceedToNextChallenge());
+    }
+
+    private IEnumerator ProceedToNextChallenge()
+    {
+        yield return new WaitForSeconds(2f);
+
+        // Turn off the previous spotlight
+        if (currentChallengeIndex < challengeSpotlights.Count && challengeSpotlights[currentChallengeIndex] != null)
+        {
+            challengeSpotlights[currentChallengeIndex].SetActive(false);
+        }
+
+        currentChallengeIndex++;
+
+        if (currentChallengeIndex >= challengeObjects.Count)
+        {
+            Debug.Log("No more challenges left!");
+            yield break;
+        }
+
+        challengeCompleted = false;
+
+        if (progressControl != null)
+        {
+            progressControl.UpdateChallengeText(currentChallengeIndex);
+        }
+
+        Debug.Log($"Starting Challenge {currentChallengeIndex}");
+
+        // Activate the new challenge spotlight
+        ActivateCurrentChallenge();
+    }
+
+    private void ActivateCurrentChallenge()
+    {
+        if (currentChallengeIndex < challengeSpotlights.Count && challengeSpotlights[currentChallengeIndex] != null)
+        {
+            challengeSpotlights[currentChallengeIndex].SetActive(true);
+            Debug.Log($"Spotlight turned on for Challenge {currentChallengeIndex}");
+        }
+    }
+
+    private string GetTagForChallenge(int challengeIndex)
+    {
+        switch (challengeIndex)
+        {
+            case 0: return "SuctionTool";
+            case 1: return "Screwdriver";
+            case 2: return "Scalpel";
+            default: return "";
+        }
     }
 }
